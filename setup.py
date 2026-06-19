@@ -76,6 +76,8 @@ FILES = {
     "app/__init__.py": """
     """,
     "app/main.py": """
+    from contextlib import asynccontextmanager
+
     from fastapi import FastAPI
 
     from app.api.webhook import router as webhook_router
@@ -84,13 +86,14 @@ FILES = {
     from app.models.base import Base
 
 
-    app = FastAPI(title=settings.app_name)
-    app.include_router(webhook_router)
-
-
-    @app.on_event("startup")
-    def on_startup() -> None:
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
         Base.metadata.create_all(bind=engine)
+        yield
+
+
+    app = FastAPI(title=settings.app_name, lifespan=lifespan)
+    app.include_router(webhook_router)
 
 
     @app.get("/health")
@@ -131,7 +134,7 @@ FILES = {
     from app.core.config import settings
 
 
-    engine = create_engine(settings.database_url, future=True)
+    engine = create_engine(settings.database_url)
     SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 
@@ -289,19 +292,22 @@ FILES = {
                 temp_file.write(response.content)
                 temp_path = Path(temp_file.name)
 
-            with temp_path.open("rb") as audio_stream:
-                files = {"file": audio_stream}
-                data = {"model": settings.whisper_model}
-                whisper_headers = {"Authorization": " ".join(["Bearer", settings.openai_api_key])}
-                whisper_response = requests.post(
-                    "https://api.openai.com/v1/audio/transcriptions",
-                    headers=whisper_headers,
-                    data=data,
-                    files=files,
-                    timeout=60,
-                )
-                whisper_response.raise_for_status()
-                return whisper_response.json().get("text", "")
+            try:
+                with temp_path.open("rb") as audio_stream:
+                    files = {"file": audio_stream}
+                    data = {"model": settings.whisper_model}
+                    whisper_headers = {"Authorization": " ".join(["Bearer", settings.openai_api_key])}
+                    whisper_response = requests.post(
+                        "https://api.openai.com/v1/audio/transcriptions",
+                        headers=whisper_headers,
+                        data=data,
+                        files=files,
+                        timeout=60,
+                    )
+                    whisper_response.raise_for_status()
+                    return whisper_response.json().get("text", "")
+            finally:
+                temp_path.unlink(missing_ok=True)
     """,
     "app/services/llm_service.py": """
     import json
