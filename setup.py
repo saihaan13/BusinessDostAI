@@ -159,7 +159,7 @@ FILES = {
     __all__ = ["Customer", "Transaction", "TaskItem", "BusinessMemory"]
     """,
     "app/models/base.py": """
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     from sqlalchemy import DateTime
     from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -170,9 +170,13 @@ FILES = {
 
 
     class TimestampMixin:
-        created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+        created_at: Mapped[datetime] = mapped_column(
+            DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        )
         updated_at: Mapped[datetime] = mapped_column(
-            DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+            DateTime(timezone=True),
+            default=lambda: datetime.now(timezone.utc),
+            onupdate=lambda: datetime.now(timezone.utc),
         )
     """,
     "app/models/customer.py": """
@@ -446,11 +450,9 @@ FILES = {
     "app/api/__init__.py": """
     """,
     "app/api/webhook.py": """
-    from fastapi import APIRouter, Depends, HTTPException, Query
-    from sqlalchemy.orm import Session
+    from fastapi import APIRouter, HTTPException, Query
 
     from app.core.config import settings
-    from app.core.database import get_db
     from app.models.base import Base
     from app.core.database import engine
     from app.schemas.whatsapp import WhatsAppWebhookResponse
@@ -474,8 +476,7 @@ FILES = {
 
 
     @router.post("", response_model=WhatsAppWebhookResponse)
-    def receive_webhook(payload: dict, db: Session = Depends(get_db)) -> WhatsAppWebhookResponse:
-        _ = db
+    def receive_webhook(payload: dict) -> WhatsAppWebhookResponse:
         entries = payload.get("entry", [])
         for entry in entries:
             for change in entry.get("changes", []):
