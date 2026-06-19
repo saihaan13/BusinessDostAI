@@ -80,10 +80,17 @@ FILES = {
 
     from app.api.webhook import router as webhook_router
     from app.core.config import settings
+    from app.core.database import engine
+    from app.models.base import Base
 
 
     app = FastAPI(title=settings.app_name)
     app.include_router(webhook_router)
+
+
+    @app.on_event("startup")
+    def on_startup() -> None:
+        Base.metadata.create_all(bind=engine)
 
 
     @app.get("/health")
@@ -453,13 +460,8 @@ FILES = {
     from fastapi import APIRouter, HTTPException, Query
 
     from app.core.config import settings
-    from app.models.base import Base
-    from app.core.database import engine
     from app.schemas.whatsapp import WhatsAppWebhookResponse
     from app.workers.tasks import process_whatsapp_voice_note
-
-
-    Base.metadata.create_all(bind=engine)
 
     router = APIRouter(prefix="/webhook", tags=["whatsapp"])
 
